@@ -12,13 +12,14 @@ import torchvision.models as models
 
 import training_images as ti
 
-EPOCHS = 4
+EPOCHS = 5
 BATCH_SIZE = 16
 MAX_LR = .0005
 
 
 def get_resnet(num_classes=1):
-    # bi-classification only has 1 class. Either is that class or not
+    # bi-classification only has 1 class. Either is that class or not.
+    # Also leaving the entire network trainable not just the last few layers
     model = models.resnet18(pretrained=True)  # pretrained = init with imagenet weights
     num_ftrs = model.fc.in_features
     model.fc = nn.Linear(num_ftrs, num_classes)  # replace last layer only
@@ -48,25 +49,27 @@ def train_model():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = get_resnet()
     model.to(device)
-    steps_per_epoch = len(dataloaders['train'])  # num batches in train set
 
     # Best loss fn for bi-classification https://pytorch.org/docs/stable/generated/torch.nn.BCEWithLogitsLoss.html
     loss_fn = nn.BCEWithLogitsLoss()
 
     # AdamW explained: https://www.fast.ai/2018/07/02/adam-weight-decay/
     optimizer = optim.AdamW(model.parameters())
+
     # OneCylceLR papers: https://arxiv.org/pdf/1506.01186.pdf  https://arxiv.org/abs/1708.07120
+    steps_per_epoch = len(dataloaders['train'])  # num batches in train set
     scheduler = OneCycleLR(optimizer, max_lr=MAX_LR, epochs=EPOCHS, steps_per_epoch=steps_per_epoch)
 
     # TRAIN
     trained_model, best_loss, train_time = _train(model=model, device=device, epochs=EPOCHS,
                                                   dataloaders=dataloaders, loss_fn=loss_fn,
                                                   optimizer=optimizer, scheduler=scheduler)
-    torch.cuda.empty_cache()
-    save_model(trained_model, Path('model.pth'))
+
     # TEST
     # MCC explained: https://en.wikipedia.org/wiki/Matthews_correlation_coefficient
     mcc, test_loss, = _test(device, trained_model, loss_fn, dataloaders)
+
+    # save_model(trained_model, Path('model.pth'))
 
 
 def _train(model, device, epochs, dataloaders, loss_fn, optimizer, scheduler):
@@ -76,6 +79,8 @@ def _train(model, device, epochs, dataloaders, loss_fn, optimizer, scheduler):
     best_mcc = -1.0
     thresh = .5
 
+    # amp = automatic mixed precision (use fp16 instead of fp32 when wont harm accuracy)
+    # much faster training
     scaler = torch.cuda.amp.GradScaler()
 
     for epoch in range(epochs):
@@ -87,7 +92,7 @@ def _train(model, device, epochs, dataloaders, loss_fn, optimizer, scheduler):
             if phase == 'train':
                 model.train()
             else:
-                model.eval()
+                model.eval()  # no dropout, norm. layers use running stats instead of batch stats
             running_loss = 0.0
             tp, tn, fp, fn = 0, 0, 0, 0
             for x, y in dataloaders[phase]:
@@ -96,17 +101,17 @@ def _train(model, device, epochs, dataloaders, loss_fn, optimizer, scheduler):
                 optimizer.zero_grad(set_to_none=True)
 
                 with torch.cuda.amp.autocast():
-
-                    outputs = model(x)
-                    loss = loss_fn(outputs, y)
-                    if phase == 'train':
-                        scaler.scale(loss).backward()
-                        scaler.step(optimizer)
-                        scale = scaler.get_scale()
-                        scaler.update()
-                        skip_lr_sched = (scale != scaler.get_scale())
-                        if not skip_lr_sched:
-                            scheduler.step()
+                    with torch.set_grad_enabled(phase == 'train'):  # only auto-grad during training
+                        outputs = model(x)
+                        loss = loss_fn(outputs, y)
+                        if phase == 'train':
+                            scaler.scale(loss).backward()
+                            scaler.step(optimizer)
+                            scale = scaler.get_scale()
+                            scaler.update()
+                            skip_lr_sched = (scale != scaler.get_scale())
+                            if not skip_lr_sched:
+                                scheduler.step()
 
                 running_loss += loss.item() * x.size(0)
                 epoch_loss = running_loss / len(dataloaders[phase].dataset)
@@ -126,7 +131,7 @@ def _train(model, device, epochs, dataloaders, loss_fn, optimizer, scheduler):
                     else:
                         print(prob, label)
             try:
-                print(f'Con. Matrix: tp={tp} tn={tn} fp={fp} fn={fn}')
+                print(f'Conf. Matrix: tp={tp} tn={tn} fp={fp} fn={fn}')
                 mcc = (
                         ((tp * tn) - (fp * fn)) /
                         math.sqrt((tp + fp)*(tp + fn)*(tn + fp)*(tn + fn))
@@ -143,6 +148,7 @@ def _train(model, device, epochs, dataloaders, loss_fn, optimizer, scheduler):
                 if mcc > best_mcc:
                     best_mcc = mcc
             print(f'{phase} Loss: {epoch_loss} MCC: {mcc}')
+            print()
     time_elapsed = time.time() - since
     print(f'Trained in {(time_elapsed // 60):.0f}m {(time_elapsed % 60):.0f}s')
     model.load_state_dict(best_model_wts)
@@ -174,7 +180,7 @@ def _test(device, model, loss_fn, dataloaders) -> tuple[float, float]:
                 elif prob <= thresh and label == 1:  # False Negative
                     fn += 1
     try:
-        print(f'Con. Matrix: tp={tp} tn={tn} fp={fp} fn={fn}')
+        print(f'Conf. Matrix: tp={tp} tn={tn} fp={fp} fn={fn}')
         mcc = ((tp * tn) - (fp * fn)) / math.sqrt((tp + fp)*(tp + fn)*(tn + fp)*(tn + fn))
     except ZeroDivisionError:
         mcc = 0.0
