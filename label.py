@@ -17,4 +17,4 @@ dir_ = 'pos' if args.pos else 'neg'
 images = sorted([
     i for i in (Path('data') / dir_).iterdir()
 ], key=lambda x: int(x.name.split('-')[-1].split('.')[0]))
-ImvWindow.view_images(images)
+ImvWindow.view_images(images, dir_)

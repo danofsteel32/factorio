@@ -11,10 +11,10 @@ class ImvWindow:
         self.images = images
 
     @classmethod
-    def view_images(cls, images):
+    def view_images(cls, images, context: str):
         image_paths = [str(i) for i in images]
         win = Popen(['imv'] + image_paths, stdout=PIPE, text=True)
-        return cls(win, images).poll()
+        return cls(win, images).poll(context=context)
 
     def send_command(self, pid: int, cmd: str, attempts: int = 1) -> None:
         client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -33,6 +33,7 @@ class ImvWindow:
     def poll(self, **kwargs):
         print(kwargs)
 
+        context = kwargs['context']
         while self.proc.poll() is None:
             assert self.proc.stdout
             line = self.proc.stdout.readline()
@@ -40,7 +41,6 @@ class ImvWindow:
             action = None
             try:
                 index = int(line) - 1  # imv starts counting at 1 not 0
-                image = self.images[index]
             except ValueError:
                 try:
                     line = line.split(' ')
@@ -49,11 +49,21 @@ class ImvWindow:
                     action = line
 
             if action == 'tag':
-                dest = Path('data/pos') / image.name
+                image = self.images[index]
+                if context == 'pos':
+                    dest = Path('data/neg') / image.name.replace('pos', 'neg-moved')
+                else:
+                    dest = Path('data/pos') / image.name.replace('neg', 'pos-moved')
+                print(f'moving {image} to {dest}')
                 shutil.move(image, dest)
 
             elif action == 'untag':
-                dest = Path('data/neg') / image.name
+                image = self.images[index]
+                if context == 'pos':
+                    dest = Path('data/neg') / image.name.replace('pos', 'neg-moved')
+                else:
+                    dest = Path('data/pos') / image.name.replace('neg', 'pos-moved')
+                print(f'moving {image} to {dest}')
                 shutil.move(image, dest)
 
             else:
