@@ -48,23 +48,10 @@ class ImvWindow:
                 except IndexError:
                     action = line
 
-            if action == 'tag':
+            if action == 'untag':
                 image = self.images[index]
-                if context == 'pos':
-                    dest = Path('data/neg') / image.name.replace('pos', 'neg-moved')
-                else:
-                    dest = Path('data/pos') / image.name.replace('neg', 'pos-moved')
-                print(f'moving {image} to {dest}')
-                shutil.move(image, dest)
-
-            elif action == 'untag':
-                image = self.images[index]
-                if context == 'pos':
-                    dest = Path('data/neg') / image.name.replace('pos', 'neg-moved')
-                else:
-                    dest = Path('data/pos') / image.name.replace('neg', 'pos-moved')
-                print(f'moving {image} to {dest}')
-                shutil.move(image, dest)
+                if context == 'neg':
+                    image.unlink()
 
             else:
                 time.sleep(.1)
