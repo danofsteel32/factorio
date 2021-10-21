@@ -12,6 +12,7 @@ import torchvision.models as models
 
 import training_images as ti
 
+K = 1
 EPOCHS = 5
 BATCH_SIZE = 16
 MAX_LR = .0005
@@ -42,8 +43,7 @@ def load_model(model, save_path: Path):
 def train_model():
 
     # Images / dataloaders
-    images = ti.get_images()
-    dataloaders = ti.get_dataloaders(images=images, batch_size=BATCH_SIZE)
+    dataloaders = ti.k_dataloaders_iterator(k=K, batch_size=BATCH_SIZE)
 
     # Prep model
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -92,10 +92,10 @@ def _train(model, device, epochs, dataloaders, loss_fn, optimizer, scheduler):
             if phase == 'train':
                 model.train()
             else:
-                model.eval()  # no dropout, norm. layers use running stats instead of batch stats
+                model.eval()  # no dropout
             running_loss = 0.0
             tp, tn, fp, fn = 0, 0, 0, 0
-            for x, y in dataloaders[phase]:
+            for x, y, _ in dataloaders[phase]:
                 x = x.to(device)
                 y = y.reshape(-1, 1).to(device)
                 optimizer.zero_grad(set_to_none=True)
@@ -160,7 +160,7 @@ def _test(device, model, loss_fn, dataloaders) -> tuple[float, float]:
     tp, tn, fp, fn = 0, 0, 0, 0
     thresh = .5
     running_loss = 0.0
-    for x, y in dataloaders['test']:
+    for x, y, paths in dataloaders['test']:
         x = x.to(device)
         y = y.reshape(-1, 1).to(device)
         with torch.no_grad():
@@ -171,6 +171,8 @@ def _test(device, model, loss_fn, dataloaders) -> tuple[float, float]:
             for n, i in enumerate(outputs):
                 prob = outputs[n].detach()
                 label = int(y.data[n].detach())
+                path = paths[n]
+                print(path, label, prob)
                 if prob > thresh and label == 1:  # True Positive
                     tp += 1
                 elif prob <= thresh and label == 0:  # True Negative

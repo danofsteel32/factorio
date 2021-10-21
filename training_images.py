@@ -14,41 +14,55 @@ INPUT_SIZE = 800
 TrainingImage = namedtuple('TrainingImage', 'path label')
 
 
-def get_images():
+def k_dataloaders_iterator(k: int = 1, batch_size: int = 16):
+    # yields k random sampled (train, dev) dataloaders with constant test set
     pos = [TrainingImage(i, 1) for i in Path('data/neg').iterdir()]
     neg = [TrainingImage(i, 0) for i in Path('data/pos').iterdir()]
-    # 50, 30, 20
-    random.shuffle(pos)
-    random.shuffle(neg)
-    train_split = int(len(pos)*.5)
-    dev_split = int(len(pos)*.3)
-    p_train = pos[:train_split]
-    p_dev = pos[train_split:train_split+dev_split]
-    p_test = pos[train_split+dev_split:]
-    print(f'Positive: train={len(p_train)} dev={len(p_dev)} test={len(p_test)}')
+    # Hold 20% for test set
+    p_test_split = int(len(pos)*.2)
+    p_test = pos[:p_test_split]
+    p_rest = pos[p_test_split:]
 
-    train_split = int(len(neg)*.5)
-    dev_split = int(len(neg)*.3)
-    n_train = neg[:train_split]
-    n_dev = neg[train_split:train_split+dev_split]
-    n_test = neg[train_split+dev_split:]
-    print(f'Negative: train={len(n_train)} dev={len(n_dev)} test={len(n_test)}')
+    n_test_split = int(len(neg)*.2)
+    n_test = neg[:n_test_split]
+    n_rest = neg[n_test_split:]
 
-    # Oversample minority class to make 50/50 distr. in train set only
-    final_p_train = []
-    for _ in range(len(n_train)//len(p_train)):
-        final_p_train.extend(p_train)
-    remainder = len(n_train) % len(p_train)
-    final_p_train.extend(random.sample(p_train, remainder))
-    print(f'Oversampled Positives: {len(final_p_train) - len(p_train)}')
-
-    train = final_p_train + n_train
-    dev = p_dev + n_dev
     test = p_test + n_test
-    random.shuffle(train)
-    random.shuffle(dev)
-    print(f'Total: train={len(train)} dev={len(dev)} test={len(test)}')
-    return dict(train=train, dev=dev, test=test)
+
+    folds = k_fold(k, p_rest+n_rest)
+    for fold in folds:
+        fold['test'] = test
+        yield get_dataloaders(fold, batch_size)
+
+
+def k_fold(k: int, images: list[TrainingImage]):
+    # split images into k train and dev sets. test set is held constant
+
+    random.shuffle(images)
+    # 80, 20
+    train_sample = int(len(images)*.8)
+
+    out = []
+    # print(len(images))
+    for n in range(k):
+        train_ = set(random.sample(images, train_sample))
+        dev_ = set(images) - train_
+
+        train, dev = list(train_), list(dev_)
+        # print(f'Train negs: {len(train)}')
+        p_train = [i for i in train if i.label == 1]
+        # print(f'Train pos: {len(p_train)}')
+
+        # Oversample pos to match neg in train set
+        for _ in range((len(train)) // len(p_train)):
+            train.extend(p_train)
+        remainder = len(train) % len(p_train)
+        train.extend(random.sample(p_train, remainder))
+
+        # print(f'Train total {len(train)}')
+        random.shuffle(train)
+        out.append({'train': train, 'dev': dev})
+    return out
 
 
 def get_dataloaders(images, batch_size):
@@ -64,7 +78,7 @@ def get_dataloaders(images, batch_size):
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         ]),
-        'val': transforms.Compose([
+        'dev': transforms.Compose([
             transforms.CenterCrop((INPUT_SIZE, INPUT_SIZE)),
             # transforms.Resize((INPUT_SIZE, INPUT_SIZE), interpolation=InterpolationMode.BICUBIC),
             transforms.ToTensor(),
@@ -74,15 +88,15 @@ def get_dataloaders(images, batch_size):
 
     datasets = {
         'train': SingleLabelDataset(images['train'], trans['train']),
-        'val': SingleLabelDataset(images['dev'], trans['val']),
+        'dev': SingleLabelDataset(images['dev'], trans['dev']),
     }
     dataloaders = {
         x: DataLoader(datasets[x], batch_size=batch_size, shuffle=True,
                       num_workers=5)
-        for x in ['train', 'val']
+        for x in ['train', 'dev']
     }
     try:
-        test = SingleLabelDataset(images['test'], trans['val'])
+        test = SingleLabelDataset(images['test'], trans['dev'])
         dataloaders['test'] = DataLoader(test, batch_size=batch_size,
                                          num_workers=4)
     except KeyError:
@@ -91,4 +105,5 @@ def get_dataloaders(images, batch_size):
 
 
 if __name__ == '__main__':
-    images = get_images()
+    for i in k_dataloaders_iterator(k=1):
+        i['dev']
