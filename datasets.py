@@ -16,4 +16,5 @@ class SingleLabelDataset(Dataset):
         image = self.images[index]
         X = self.transform(Image.open(image.path))
         Y = self.images[index].label
-        return X, torch.tensor(Y, dtype=torch.float32), image.path
+        id = int(image.path.name.split('.')[0])
+        return X, torch.tensor(Y, dtype=torch.float32), id

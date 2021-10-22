@@ -88,12 +88,12 @@ def get_dataloaders(images, batch_size):
 
     datasets = {
         'train': SingleLabelDataset(images['train'], trans['train']),
-        'dev': SingleLabelDataset(images['dev'], trans['dev']),
+        'val': SingleLabelDataset(images['dev'], trans['dev']),
     }
     dataloaders = {
         x: DataLoader(datasets[x], batch_size=batch_size, shuffle=True,
-                      num_workers=5)
-        for x in ['train', 'dev']
+                      num_workers=4)
+        for x in ['train', 'val']
     }
     try:
         test = SingleLabelDataset(images['test'], trans['dev'])
