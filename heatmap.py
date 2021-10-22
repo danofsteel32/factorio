@@ -52,7 +52,7 @@ if __name__ == '__main__':
     try:
         trained_model = load_model(model, Path('model.pth'))
     except:
-        model.load_state_dict(torch.load('model.pth'), map_location=torch.device('cpu'))
+        model.load_state_dict(torch.load('model.pth', map_location=torch.device('cpu')))
         trained_model = model
     final_layer = trained_model._modules.get('layer4')
     activated_features = SaveFeatures(final_layer)
