@@ -46,7 +46,7 @@ def single_image(image_path: Path):
 
 
 if __name__ == '__main__':
-    image_path = Path('data/neg/90.jpg')
+    image_path = Path('data/neg/109.jpg')
     original_image, processed_image = single_image(image_path)
     model = get_resnet()
     try:
