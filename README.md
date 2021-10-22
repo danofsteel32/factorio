@@ -2,3 +2,6 @@
 
 Trained a simple binary classifier on frames taken from `ProgDieFeed_20211014000000.avi` video.
 MCC score of .97 on test set.
+
+![original frame](109.jpg)
+![heatmap](heatmap.png)
