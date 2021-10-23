@@ -9,7 +9,7 @@ from torchvision.transforms import InterpolationMode
 from datasets import SingleLabelDataset
 
 
-INPUT_SIZE = 800
+INPUT_SIZE = 800  # Center cropping images bc center is all we care about in this case
 
 TrainingImage = namedtuple('TrainingImage', 'path label')
 
@@ -39,7 +39,7 @@ def k_fold(k: int, images: list[TrainingImage]):
     # split images into k train and dev sets. test set is held constant
 
     random.shuffle(images)
-    # 80, 20
+    # 80, 20 train/dev split
     train_sample = int(len(images)*.8)
 
     out = []
@@ -80,7 +80,6 @@ def get_dataloaders(images, batch_size):
         ]),
         'dev': transforms.Compose([
             transforms.CenterCrop((INPUT_SIZE, INPUT_SIZE)),
-            # transforms.Resize((INPUT_SIZE, INPUT_SIZE), interpolation=InterpolationMode.BICUBIC),
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         ])

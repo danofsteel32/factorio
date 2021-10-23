@@ -46,12 +46,15 @@ def single_image(image_path: Path):
 
 
 if __name__ == '__main__':
-    image_path = Path('data/neg/40.jpg')
+    image_path = Path('data/pos/1.jpg')
     original_image, processed_image = single_image(image_path)
     model = get_resnet()
     try:
+        # Load on cuda
         trained_model = load_model(model, Path('model.pth'))
-    except:
+    except Exception as e:
+        # Load on cpu
+        print(e)
         model.load_state_dict(torch.load('model.pth', map_location=torch.device('cpu')))
         trained_model = model
     final_layer = trained_model._modules.get('layer4')
@@ -67,4 +70,4 @@ if __name__ == '__main__':
     # pyplot.imshow(overlay[0], alpha=0.5, cmap='jet')
     pyplot.imshow(original_image)
     pyplot.imshow(skimage.transform.resize(overlay[0], processed_image.shape[1:3]), alpha=0.5, cmap='jet');
-    pyplot.savefig('heatmap.png')
+    pyplot.savefig('heatmap-1.png')
