@@ -77,7 +77,19 @@ class SingleLabelDataset(Dataset):
         image = self.images[index]
         X = self.transform(Image.open(image.path))
         Y = self.images[index].label
-        return X, torch.tensor(Y, dtype=torch.float32), image.path
+        frame_id = int(image.path.name.split('.')[0])
+        return X, torch.tensor(Y, dtype=torch.float32), frame_id
+
+
+def all_frames_dataloader(batch_size):
+    images = [TrainingImage(p, 0) for p in ordered_frames()]
+    transforms_ = transforms.Compose([
+        transforms.CenterCrop((INPUT_SIZE, INPUT_SIZE)),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+    ])
+    test = SingleLabelDataset(images, transforms_)
+    return DataLoader(test, batch_size=batch_size, num_workers=8, pin_memory=True)
 
 
 def get_dataloaders(images, batch_size):
@@ -105,13 +117,13 @@ def get_dataloaders(images, batch_size):
     }
     dataloaders = {
         x: DataLoader(datasets[x], batch_size=batch_size, shuffle=True,
-                      num_workers=12)
+                      num_workers=12, pin_memory=True)
         for x in ['train', 'val']
     }
     try:
         test = SingleLabelDataset(images['test'], trans['val'])
         dataloaders['test'] = DataLoader(test, batch_size=batch_size,
-                                         num_workers=12)
+                                         num_workers=8, pin_memory=True)
     except KeyError:
         return dataloaders
     return dataloaders

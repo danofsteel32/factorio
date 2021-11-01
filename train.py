@@ -10,12 +10,11 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import OneCycleLR
 import torchvision.models as models
 
-import training_images as ti
+import datasets
 
-K = 1
-EPOCHS = 5
+EPOCHS = 6
 BATCH_SIZE = 16
-MAX_LR = .0005
+MAX_LR = .001
 
 
 def get_resnet(num_classes=1):
@@ -41,34 +40,33 @@ def load_model(model, save_path: Path):
 
 
 def train_model():
+    images = datasets.splits(oversample=True)
+    dataloaders = datasets.get_dataloaders(images, BATCH_SIZE)
 
-    # Images / dataloaders
-    k_dataloaders = ti.k_dataloaders_iterator(k=K, batch_size=BATCH_SIZE)
-    for dataloaders in k_dataloaders:
-        # Prep model
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        model = get_resnet()
-        model.to(device)
+    # Prep model
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = get_resnet()
+    model.to(device)
 
-        # Best loss fn for bi-classification https://pytorch.org/docs/stable/generated/torch.nn.BCEWithLogitsLoss.html
-        loss_fn = nn.BCEWithLogitsLoss()
+    # Best loss fn for bi-classification https://pytorch.org/docs/stable/generated/torch.nn.BCEWithLogitsLoss.html
+    loss_fn = nn.BCEWithLogitsLoss()
 
-        # AdamW explained: https://www.fast.ai/2018/07/02/adam-weight-decay/
-        optimizer = optim.AdamW(model.parameters())
+    # AdamW explained: https://www.fast.ai/2018/07/02/adam-weight-decay/
+    optimizer = optim.AdamW(model.parameters())
 
-        # OneCylceLR papers: https://arxiv.org/pdf/1506.01186.pdf  https://arxiv.org/abs/1708.07120
-        steps_per_epoch = len(dataloaders['train'])  # num batches in train set
-        scheduler = OneCycleLR(optimizer, max_lr=MAX_LR, epochs=EPOCHS, steps_per_epoch=steps_per_epoch)
+    # OneCylceLR papers: https://arxiv.org/pdf/1506.01186.pdf  https://arxiv.org/abs/1708.07120
+    steps_per_epoch = len(dataloaders['train'])  # num batches in train set
+    scheduler = OneCycleLR(optimizer, max_lr=MAX_LR, epochs=EPOCHS, steps_per_epoch=steps_per_epoch)
 
-        # TRAIN
-        trained_model, best_loss, train_time = _train(model=model, device=device, epochs=EPOCHS,
-                                                      dataloaders=dataloaders, loss_fn=loss_fn,
-                                                      optimizer=optimizer, scheduler=scheduler)
+    # TRAIN
+    trained_model, best_loss, train_time = _train(model=model, device=device, epochs=EPOCHS,
+                                                  dataloaders=dataloaders, loss_fn=loss_fn,
+                                                  optimizer=optimizer, scheduler=scheduler)
 
-        # TEST
-        # MCC explained: https://en.wikipedia.org/wiki/Matthews_correlation_coefficient
-        mcc, test_loss, = _test(device, trained_model, loss_fn, dataloaders)
-        save_model(trained_model, Path('model.pth'))
+    # TEST
+    # MCC explained: https://en.wikipedia.org/wiki/Matthews_correlation_coefficient
+    mcc, test_loss, = _test(device, trained_model, loss_fn, dataloaders)
+    save_model(trained_model, Path('model.pth'))
 
 
 def _train(model, device, epochs, dataloaders, loss_fn, optimizer, scheduler):
@@ -160,7 +158,7 @@ def _test(device, model, loss_fn, dataloaders) -> tuple[float, float]:
     thresh = .5
     running_loss = 0.0
     results = []
-    for x, y, frames in dataloaders['test']:
+    for x, y, frame_ids in dataloaders['test']:
         x = x.to(device)
         y = y.reshape(-1, 1).to(device)
         with torch.no_grad():
@@ -171,7 +169,7 @@ def _test(device, model, loss_fn, dataloaders) -> tuple[float, float]:
             for n, i in enumerate(outputs):
                 prob = float(outputs[n].detach())
                 label = int(y.data[n].detach())
-                frame = str(frames[n])
+                frame = Path(f'data/frames/{frame_ids[n]}.jpg')
                 if prob > thresh and label == 1:  # True Positive
                     tp += 1
                 elif prob <= thresh and label == 0:  # True Negative
@@ -195,5 +193,30 @@ def _test(device, model, loss_fn, dataloaders) -> tuple[float, float]:
     return mcc, test_loss
 
 
+def eval_on_all_frames():
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = load_model(get_resnet(), Path('model.pth'))
+    model.to(device)
+    model.eval()
+
+    results = []
+    for x, y, frame_ids in datasets.all_frames_dataloader(batch_size=64):
+        x = x.to(device)
+        y = y.reshape(-1, 1).to(device)
+        with torch.no_grad():
+            outputs = model(x)
+            outputs = torch.sigmoid(outputs)
+            for n, i in enumerate(outputs):
+                prob = float(outputs[n].detach())
+                label = int(y.data[n].detach())
+                frame = Path(f'data/frames/{frame_ids[n]}.jpg')
+                results.append(f'{frame} {label} {prob}\n')
+
+    with open('frame_probs.txt', 'w') as f:
+        for r in results:
+            f.write(r)
+
+
 if __name__ == '__main__':
-    train_model()
+    eval_on_all_frames()
+    # train_model()
