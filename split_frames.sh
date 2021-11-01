@@ -1,24 +1,13 @@
 #!/bin/bash
 
-mkdir -p data/{pos,neg}
+mkdir -p data/frames
 
-# -t total duration in seconds
-# -vsync 0 all frames
+#       -frame_pts true \
 
 # Positives (11m - 11m39s)
 ffmpeg -ss 00:10:00 \
-       -to 00:11:39 \
+       -to 00:12:00 \
        -i data/ProgDieFeed_20211014000000.avi \
-       -vsync 0 \
-       -frame_pts true \
+       -vsync 2 \
        -q:v 2 \
-       -f image2 'data/pos/%d.jpg'
-
-# Negatives (11m40s - 11m55s)
-ffmpeg -ss 00:11:40 \
-       -to 00:11:50 \
-       -i data/ProgDieFeed_20211014000000.avi \
-       -vsync 0 \
-       -frame_pts true \
-       -q:v 2 \
-       -f image2 'data/neg/%d.jpg'
+       -f image2 'data/frames/%d.jpg'

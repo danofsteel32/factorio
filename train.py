@@ -50,7 +50,6 @@ def train_model():
         model = get_resnet()
         model.to(device)
 
-
         # Best loss fn for bi-classification https://pytorch.org/docs/stable/generated/torch.nn.BCEWithLogitsLoss.html
         loss_fn = nn.BCEWithLogitsLoss()
 
@@ -69,8 +68,7 @@ def train_model():
         # TEST
         # MCC explained: https://en.wikipedia.org/wiki/Matthews_correlation_coefficient
         mcc, test_loss, = _test(device, trained_model, loss_fn, dataloaders)
-
-        # save_model(trained_model, Path('model.pth'))
+        save_model(trained_model, Path('model.pth'))
 
 
 def _train(model, device, epochs, dataloaders, loss_fn, optimizer, scheduler):
@@ -161,7 +159,8 @@ def _test(device, model, loss_fn, dataloaders) -> tuple[float, float]:
     tp, tn, fp, fn = 0, 0, 0, 0
     thresh = .5
     running_loss = 0.0
-    for x, y, ids in dataloaders['test']:
+    results = []
+    for x, y, frames in dataloaders['test']:
         x = x.to(device)
         y = y.reshape(-1, 1).to(device)
         with torch.no_grad():
@@ -170,12 +169,9 @@ def _test(device, model, loss_fn, dataloaders) -> tuple[float, float]:
             running_loss += loss.item() * x.size(0)
             outputs = torch.sigmoid(outputs)
             for n, i in enumerate(outputs):
-                prob = outputs[n].detach()
+                prob = float(outputs[n].detach())
                 label = int(y.data[n].detach())
-                if label == 1:
-                    path = Path(f'data/neg/{ids[n]}.jpg')
-                else:
-                    path = Path(f'data/pos/{ids[n]}.jpg')
+                frame = str(frames[n])
                 if prob > thresh and label == 1:  # True Positive
                     tp += 1
                 elif prob <= thresh and label == 0:  # True Negative
@@ -184,7 +180,7 @@ def _test(device, model, loss_fn, dataloaders) -> tuple[float, float]:
                     fp += 1
                 elif prob <= thresh and label == 1:  # False Negative
                     fn += 1
-                print(path, label, prob)
+                results.append(f'{frame} {label} {prob}\n')
     try:
         print(f'Conf. Matrix: tp={tp} tn={tn} fp={fp} fn={fn}')
         mcc = ((tp * tn) - (fp * fn)) / math.sqrt((tp + fp)*(tp + fn)*(tn + fp)*(tn + fn))
@@ -193,6 +189,9 @@ def _test(device, model, loss_fn, dataloaders) -> tuple[float, float]:
     test_loss = running_loss / len(dataloaders['test'].dataset)
     print('Test MCC ', mcc)
     print('Test Loss ', test_loss)
+    with open('test_results.txt', 'w') as f:
+        for r in results:
+            f.write(r)
     return mcc, test_loss
 
 
